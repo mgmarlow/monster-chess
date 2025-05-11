@@ -19,6 +19,11 @@
 (var offset-x 0)
 (var offset-y 0)
 
+(macro when-let [[name condition] & body]
+  `(let [,name ,condition]
+     (when ,name
+       (do ,(unpack body)))))
+
 (fn includes? [arr value]
   "Returns true if ARR includes VALUE."
   (accumulate [found nil _ item (ipairs arr)]
@@ -28,6 +33,15 @@
   "Returns true if ARR includes VALUE."
   (accumulate [found nil _ item (ipairs arr)]
     (if (or found (callback item)) true found)))
+
+(fn find-index [arr value]
+  "Returns the index of VALUE in ARR or nil if not found."
+  (var index nil)
+  (each [i el (ipairs arr)]
+    (when (= el value)
+      (set index i)
+      (lua "break")))
+  index)
 
 (fn attacks [piece]
   (case piece
@@ -56,7 +70,11 @@
                :selected nil })
 
 (fn movable? [piece]
-  (includes? (. state :movable) (. piece :kind)))
+  (includes? state.movable piece.kind))
+
+(fn remove-movable [piece]
+  (when-let [index (find-index state.movable piece.kind)]
+            (table.remove state.movable index)))
 
 (local all-pieces
        [
@@ -70,14 +88,11 @@
         ])
 
 (fn remove-piece [piece]
-  (var index nil)
-  (each [i p (ipairs all-pieces)]
-    (when (= p piece)
-      (set index i)))
-  (when index
-    (table.remove all-pieces index)))
+  (when-let [index (find-index all-pieces piece)]
+            (table.remove all-pieces index)))
 
-(fn serialize [row col] (.. row "," col))
+(fn serialize [row col]
+  (.. row "," col))
 
 (fn regenerate-occupied-squares []
   (let [squares {}]
@@ -111,10 +126,10 @@
 (fn within-bounds? [x y]
   (and (>= x 0) (>= y 0) (< x (. board :width)) (< y (. board :height))))
 
+;; TODO: knight bug where movable wraps around at the edges
 (fn movable-squares [piece]
   (let [deltas (attacks piece)
-        [row col] [(. piece :row) (. piece :col)]
-        occupied (. state :occupied)
+        [row col] [piece.row piece.col]
         squares []]
     (each [_ delta (ipairs deltas)]
       (let [[drow dcol] delta]
@@ -122,7 +137,7 @@
         (var next-col (+ col dcol))
 
         (while (within-bounds? next-row next-col)
-          (let [other-piece (. occupied (serialize next-row next-col))]
+          (let [other-piece (. state :occupied (serialize next-row next-col))]
             (when other-piece
               (when (= (. other-piece :color) :black)
                 (table.insert squares [next-row next-col]))
@@ -133,12 +148,14 @@
     squares))
 
 (fn capture-piece [winner loser]
+  (remove-movable winner)
   (set winner.row (. loser :row))
   (set winner.col (. loser :col))
   (remove-piece loser)
   (regenerate-occupied-squares))
 
 (fn move-piece [piece row col]
+  (remove-movable piece)
   (set piece.row row)
   (set piece.col col)
   (regenerate-occupied-squares))
