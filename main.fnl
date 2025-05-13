@@ -21,6 +21,10 @@
 
 ;;; General utilities
 
+(macro unless [condition & body]
+  `(when (not ,condition)
+     (do ,(unpack body))))
+
 (macro when-let [[name condition] & body]
   `(let [,name ,condition]
      (when ,name
@@ -79,6 +83,7 @@
 ;; TODO: A little misleading, should probably be "levelstate"
 (var gamestate nil)
 (var selected nil)
+(var available-moves [])
 
 (fn parse-mcn [mcn]
   "Expand MCN string into a table of game state."
@@ -105,24 +110,22 @@
   "Note that only the immediate delta is given. Consumers are expected to check
 rays? to determine whether a piece can move along an entire rank/file/diagonal."
   (case piece
-    {:kind :pawn :color :white} [[-1 -1] [1 -1]]
-    {:kind :pawn :color :black} [[-1 1] [1 1]]
-    {:kind :knight} [[-2 -1] [-2 1] [-1 -2] [-1 2] [1 -2] [1 2] [2 -1] [2 1]]
-    {:kind :bishop} [[-1 -1] [-1 1] [1 -1] [1 1]]
-    {:kind :rook} [[0 -1] [0 1] [-1 0] [1 0]] 
-    {:kind :queen} [[-1 -1] [-1 0] [-1 1] [0 -1] [0 1] [1 -1] [1 0] [1 1]]
-    {:kind :king} [[-1 -1] [-1 1] [-1 1] [0 -1] [0 1] [1 -1] [1 0] [1 1]]))
+    "P" [[-1 -1] [-1 1]]
+    "N" [[-2 -1] [-2 1] [-1 -2] [-1 2] [1 -2] [1 2] [2 -1] [2 1]]
+    "B" [[-1 -1] [-1 1] [1 -1] [1 1]]
+    "R" [[0 -1] [0 1] [-1 0] [1 0]]
+    "Q" [[-1 -1] [-1 0] [-1 1] [0 -1] [0 1] [1 -1] [1 0] [1 1]]
+    "K" [[-1 -1] [-1 1] [-1 1] [0 -1] [0 1] [1 -1] [1 0] [1 1]]))
 
 (fn moves [piece]
   "Only pawn movement rules differ from capture rules."
   (case piece
-    {:kind :pawn :color :white} [0 -1]
-    {:kind :pawn :color :black} [0 1]
-    t (attacks piece)))
+    "P" [0 -1]
+    _ (attacks piece)))
 
-(fn rays? [piece]
+(fn rays? [piecestr]
   "Whether the movement of PIECE continues until bounds are reached."
-  (includes? [:bishop :rook :queen] (. piece :kind)))
+  (includes? ["B" "R" "Q"] piecestr))
 
 (local state { :occupied {}
                :moves []
@@ -132,64 +135,64 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
   "Only white pieces are player-controlled."
   (string.match piecestr "[A-Z]"))
 
-;; (fn remove-piece [piece]
-;;   (when-let [index (find-index all-pieces piece)]
-;;             (table.remove all-pieces index)))
+(fn enemy? [piecestr]
+  (string.match piecestr "[a-z]"))
 
-;; (fn serialize [row col]
-;;   (.. row "," col))
-
-;; (fn regenerate-occupied-squares []
-;;   (let [squares {}]
-;;     (each [_ piece (ipairs all-pieces)]
-;;       (tset squares (serialize (. piece :row) (. piece :col)) piece))
-;;     (set state.occupied squares)))
-
-;; (fn find-piece [row col] (. state :occupied (serialize row col)))
-
-(fn find-piece [row col] (. gamestate :board row col))
+(fn find-piece [row col]
+  (let [maybe-piece (. gamestate :board row col)]
+    (and (not= maybe-piece ".") maybe-piece)))
 
 (fn within-bounds? [row col]
-  (and (>= row 0) (>= col 0) (<= col gamestate.cols) (<= row gamestate.rows)))
+  (and (> row 0) (> col 0) (<= col gamestate.cols) (<= row gamestate.rows)))
 
-;; TODO: knight bug where movable wraps around at the edges
-;; (fn movable-squares [piece]
-;;   (let [deltas (attacks piece)
-;;         [row col] [piece.row piece.col]
-;;         squares []]
-;;     (each [_ delta (ipairs deltas)]
-;;       (let [[drow dcol] delta]
-;;         (var next-row (+ row drow))
-;;         (var next-col (+ col dcol))
+(fn movable-squares [piecestr original-row original-col]
+  (let [deltas (attacks piecestr)
+        squares []]
+    (each [_ delta (ipairs deltas)]
+      (let [[row col] delta]
+        (var next-row (+ original-row row))
+        (var next-col (+ original-col col))
+        ;; TODO: pawn conditions
+        (while (within-bounds? next-row next-col)
+          (let [maybe-piece (find-piece next-row next-col)]
+            (when maybe-piece
+              (when (enemy? maybe-piece)
+                (table.insert squares [next-row next-col]))
+              (lua "break"))
+            (table.insert squares [next-row next-col])
+            (unless (rays? piecestr)
+                (lua "break"))
+            (set next-row (+ next-row row))
+            (set next-col (+ next-col col))))))
+    squares))
 
-;;         (while (within-bounds? next-row next-col)
-;;           (let [other-piece (. state :occupied (serialize next-row next-col))]
-;;             (when other-piece
-;;               (when (= (. other-piece :color) :black)
-;;                 (table.insert squares [next-row next-col]))
-;;               (lua "break"))
-;;             (table.insert squares [next-row next-col]))
-;;           (set next-row (+ next-row drow))
-;;           (set next-col (+ next-col dcol)))))
-;;     squares))
+(fn valid-move? [row col]
+  (find available-moves
+        (lambda [tuple]
+          (let [[vr vc] tuple]
+            (and (= vr row) (= vc col))))))
+
+(fn game-over? []
+  (let [enemies (accumulate [rst [] _ row (ipairs gamestate.board)]
+                  (do
+                    (each [_ p (ipairs row)]
+                      (when (enemy? p)
+                        (table.insert rst p)))
+                    rst))]
+    (= (length enemies) 0)))
+
 
 ;;; Actions
 
-;; TODO: when removing movable, transition to enemy AI if there's nothing
-;; left in the movable pool.
+(fn set-piece [row col value]
+  (tset gamestate :board row col value))
 
-;; (fn capture-piece [winner loser]
-;;   (remove-movable winner)
-;;   (set winner.row (. loser :row))
-;;   (set winner.col (. loser :col))
-;;   (remove-piece loser)
-;;   (regenerate-occupied-squares))
-
-;; (fn move-piece [piece row col]
-;;   (remove-movable piece)
-;;   (set piece.row row)
-;;   (set piece.col col)
-;;   (regenerate-occupied-squares))
+(fn move-selected [row col]
+  (set-piece row col (or (and (find-piece row col)
+                              (string.upper (find-piece row col)))
+                         selected.piece))
+  (set-piece selected.row selected.col ".")
+  (set selected nil))
 
 ;;; Drawing
 
@@ -255,9 +258,8 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
   (draw-board)
   (when selected
     (draw-highlight selected.row selected.col)
-    ;; (each [_ move (ipairs state.moves)]
-    ;;   (draw-highlight (unpack move)))
-    )
+    (each [_ move (ipairs available-moves)]
+      (draw-highlight (unpack move))))
   (draw-pieces))
 
 (fn love.update [dt])
@@ -267,22 +269,18 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
     (let [[row col] (pixels-to-coords x y)]
       (when (within-bounds? row col)
         (let [maybe-piece (find-piece row col)]
-          (if (and maybe-piece (movable? maybe-piece))
-              (set selected { :row row :col col })
-              (set selected nil)))))))
-
-          ;; (if (and selected
-          ;;          (find state.moves
-          ;;                (lambda [sq]
-          ;;                  (= (serialize (unpack sq)) (serialize row col)))))
-          ;;     (do
-          ;;       (if maybe-piece
-          ;;           (capture-piece state.selected maybe-piece)
-          ;;           (move-piece state.selected row col))
-          ;;       (set state.selected nil))
-          ;;     (if (and maybe-piece (movable? maybe-piece))
-          ;;         (do
-          ;;           (set state.selected maybe-piece)
-          ;;           (set state.moves (movable-squares maybe-piece)))
-          ;;         (set state.selected nil)
-          ;;         (set state.moves []))))))))
+          (if selected
+              (if (valid-move? row col)
+                  (do
+                    (move-selected row col)
+                    (when (game-over?)
+                      (print "you won!")))
+                  (set selected nil)
+                  (set available-moves []))
+              (if (and maybe-piece (movable? maybe-piece))
+                  (do
+                    (set selected { :row row :col col :piece maybe-piece })
+                    (set available-moves
+                         (movable-squares maybe-piece row col)))
+                  (set selected nil)
+                  (set available-moves []))))))))
