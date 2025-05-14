@@ -57,6 +57,11 @@
         (table.insert vals item))
       vals)))
 
+(fn concat [t1 t2]
+  (each [_ el (ipairs t2)]
+    (table.insert t1 el))
+  t1)
+
 (fn coords-to-pixels [row col]
   "Convert ROW, COL to [x, y]."
   [(+ (* (- col 1) tile-size) offset-x)
@@ -83,7 +88,10 @@
 ;; Example:
 ;; "5 5 1q3/p4/5/5/3B1 2"
 
-(var levels ["4 4 bxr1/2xn/1N2/4 5"
+(var levels ["4 4 4/1n2/4/1Rb1 2"
+             "4 4 2k1/1n2/4/pRb1 8"
+             ;; Introduction: walls
+             "4 4 bxr1/2xn/1N2/4 5"
              "4 4 2xk/n1xx/4/R1n1 7"
              "4 4 1x1q/1nx1/3x/rKb1 6"])
 
@@ -137,7 +145,7 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
 (fn moves [piece]
   "Only pawn movement rules differ from capture rules."
   (case piece
-    "P" [0 -1]
+    "P" [[-1 0]]
     _ (attacks piece)))
 
 (fn rays? [piecestr]
@@ -160,14 +168,26 @@ Otherwise, return false."
 (fn within-bounds? [row col]
   (and (> row 0) (> col 0) (<= col game.level.cols) (<= row game.level.rows)))
 
-(fn movable-squares [piecestr original-row original-col]
-  (let [deltas (attacks piecestr)
+(fn pawn-attackables [row col]
+  "List of attack deltas for a pawn at ROW, COL. Empty if the pawn has no
+attackable squares."
+  (filter (attacks "P")
+          (lambda [delta]
+            (let [[drow dcol] delta
+                  [atk-row atk-col] [(+ drow row) (+ dcol col)]]
+              (and
+               (within-bounds? atk-row atk-col)
+               (find-piece atk-row atk-col))))))
+
+(fn movable-squares [piecestr row col]
+  (let [deltas (if (= piecestr "P")
+                   (concat (moves piecestr) (pawn-attackables row col))
+                   (moves piecestr))
         squares []]
     (each [_ delta (ipairs deltas)]
-      (let [[row col] delta]
-        (var next-row (+ original-row row))
-        (var next-col (+ original-col col))
-        ;; TODO: pawn conditions
+      (let [[drow dcol] delta]
+        (var next-row (+ row drow))
+        (var next-col (+ col dcol))
         (while (within-bounds? next-row next-col)
           (let [maybe-piece (find-piece next-row next-col)]
             (when maybe-piece
@@ -177,8 +197,8 @@ Otherwise, return false."
             (table.insert squares [next-row next-col])
             (unless (rays? piecestr)
                 (lua "break"))
-            (set next-row (+ next-row row))
-            (set next-col (+ next-col col))))))
+            (set next-row (+ next-row drow))
+            (set next-col (+ next-col dcol))))))
     squares))
 
 (fn valid-move? [row col]
