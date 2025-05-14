@@ -83,10 +83,9 @@
 ;; Example:
 ;; "5 5 1q3/p4/5/5/3B1 2"
 
-;; (var level-1 "5 5 1q3/p4/5/5/3B1 2")
-;; TODO:
-(var levels ["5 5 1q3/p4/5/5/3B1 2"
-             "4 4 bxr1/2xn/1N2/4 5"])
+(var levels ["4 4 bxr1/2xn/1N2/4 5"
+             "4 4 2xk/n1xx/4/R1n1 7"
+             "4 4 1x1q/1nx1/3x/rKb1 6"])
 
 (fn parse-mcn [mcn]
   "Expand MCN string into a table of game state."
@@ -120,7 +119,8 @@
   (set game.level (parse-mcn (. levels n)))
   (set game.selected nil)
   (set game.available-moves [])
-  (set game.num-moves 0)
+  (set game.move-counter 0)
+  (set game.level-counter n)
   (set game.current-state :play))
 
 (fn attacks [piece]
@@ -132,7 +132,7 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
     "B" [[-1 -1] [-1 1] [1 -1] [1 1]]
     "R" [[0 -1] [0 1] [-1 0] [1 0]]
     "Q" [[-1 -1] [-1 0] [-1 1] [0 -1] [0 1] [1 -1] [1 0] [1 1]]
-    "K" [[-1 -1] [-1 1] [-1 1] [0 -1] [0 1] [1 -1] [1 0] [1 1]]))
+    "K" [[-1 -1] [-1 0] [-1 1] [0 -1] [0 1] [1 -1] [1 0] [1 1]]))
 
 (fn moves [piece]
   "Only pawn movement rules differ from capture rules."
@@ -209,6 +209,14 @@ Otherwise, return false."
   (set game.move-counter (+ game.move-counter 1))
   (set game.selected nil))
 
+;; TODO: probably shouldn't loop around, but instead swap to an actual
+;; game over screen.
+(fn advance-level []
+  (load-level
+   (if (= (length levels) game.level-counter)
+       1
+       (+ game.level-counter 1))))
+
 ;;; Drawing
 
 (fn draw-highlight [row col]
@@ -278,22 +286,23 @@ Otherwise, return false."
     (each [_ move (ipairs game.available-moves)]
       (draw-highlight (unpack move))))
   (love.graphics.setColor 1 1 1)
-  (love.graphics.print (.. "Moves: " game.move-counter) 10 10)
+  (love.graphics.print (.. "Level: " game.level-counter) 20 10)
+  (love.graphics.print (.. "Moves: " game.move-counter) 20 50)
   (draw-pieces))
 
 (fn draw-game-over-state []
   (love.graphics.setColor 1 1 1)
-  (love.graphics.print "Puzzle solved!" 10 10)
-  (love.graphics.print (.. "Moves: " game.move-counter) 10 50)
-  (love.graphics.print (.. "Par: " game.level.par) 10 90)
-  (love.graphics.print "Press Enter to continue" 10 130))
+  (love.graphics.print "Puzzle solved!" 20 10)
+  (love.graphics.print (.. "Moves: " game.move-counter) 20 50)
+  (love.graphics.print (.. "Par: " game.level.par) 20 90)
+  (love.graphics.print "Press Enter to continue" 20 130))
 
 ;;; Love handlers
 
 (fn love.load []
   (print game.current-state)
   (love.window.setTitle "monster chess")
-  (load-level 2))
+  (load-level 1))
 
 (fn love.draw []
   (case game.current-state
@@ -306,11 +315,13 @@ Otherwise, return false."
   (case game.current-state
     :game-over (do
                  (when (= key "return")
-                   ;; TODO:
-                   (print "go to next level")))
+                   (advance-level)))
     :play (do
             (when (= key "r")
-              (print "reset level")))))
+              (load-level game.level-counter))
+            ;; TODO: debug only
+            (when (= key "tab")
+              (advance-level)))))
 
 (fn love.mousepressed [x y button]
   ;; Kind of a shortcut/hack to avoid checking states here.
