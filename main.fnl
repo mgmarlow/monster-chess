@@ -2,6 +2,7 @@
                 :dark [0.71 0.53 0.39]
                 :highlight [0.42 0.62 0.35 0.75] })
 
+(local block-font (love.graphics.newFont "fonts/Kenney Blocks.ttf" 24))
 (local wpawn-img (love.graphics.newImage "img/wP.png"))
 (local bpawn-img (love.graphics.newImage "img/bP.png"))
 (local wknight-img (love.graphics.newImage "img/wN.png"))
@@ -80,10 +81,8 @@
 ;; "5 5 1q3/p4/5/5/3B1 2"
 
 (var level-1 "5 5 1q3/p4/5/5/3B1 2")
-;; TODO: A little misleading, should probably be "levelstate"
-(var gamestate nil)
-(var selected nil)
-(var available-moves [])
+;; TODO:
+(var levels ["5 5 1q3/p4/5/5/3B1 2"])
 
 (fn parse-mcn [mcn]
   "Expand MCN string into a table of game state."
@@ -106,6 +105,20 @@
       :board board
       :par par }))
 
+(var game { :selected nil
+            :available-moves []
+            :move-counter 0
+            :current-state :play
+            :level-counter 1
+            :level nil })
+
+(fn load-level [mcn]
+  (set game.level (parse-mcn mcn))
+  (set game.selected nil)
+  (set game.available-moves [])
+  (set game.num-moves 0)
+  (set game.current-state :play))
+
 (fn attacks [piece]
   "Note that only the immediate delta is given. Consumers are expected to check
 rays? to determine whether a piece can move along an entire rank/file/diagonal."
@@ -127,10 +140,6 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
   "Whether the movement of PIECE continues until bounds are reached."
   (includes? ["B" "R" "Q"] piecestr))
 
-(local state { :occupied {}
-               :moves []
-               :selected nil })
-
 (fn movable? [piecestr]
   "Only white pieces are player-controlled."
   (string.match piecestr "[A-Z]"))
@@ -139,11 +148,13 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
   (string.match piecestr "[a-z]"))
 
 (fn find-piece [row col]
-  (let [maybe-piece (. gamestate :board row col)]
+  "Check ROW, COL in game.level. If a piece is found, return the piece.
+Otherwise, return false."
+  (let [maybe-piece (. game :level :board row col)]
     (and (not= maybe-piece ".") maybe-piece)))
 
 (fn within-bounds? [row col]
-  (and (> row 0) (> col 0) (<= col gamestate.cols) (<= row gamestate.rows)))
+  (and (> row 0) (> col 0) (<= col game.level.cols) (<= row game.level.rows)))
 
 (fn movable-squares [piecestr original-row original-col]
   (let [deltas (attacks piecestr)
@@ -167,13 +178,13 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
     squares))
 
 (fn valid-move? [row col]
-  (find available-moves
+  (find game.available-moves
         (lambda [tuple]
           (let [[vr vc] tuple]
             (and (= vr row) (= vc col))))))
 
 (fn game-over? []
-  (let [enemies (accumulate [rst [] _ row (ipairs gamestate.board)]
+  (let [enemies (accumulate [rst [] _ row (ipairs game.level.board)]
                   (do
                     (each [_ p (ipairs row)]
                       (when (enemy? p)
@@ -181,18 +192,18 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
                     rst))]
     (= (length enemies) 0)))
 
-
 ;;; Actions
 
 (fn set-piece [row col value]
-  (tset gamestate :board row col value))
+  (tset game :level :board row col value))
 
 (fn move-selected [row col]
   (set-piece row col (or (and (find-piece row col)
                               (string.upper (find-piece row col)))
-                         selected.piece))
-  (set-piece selected.row selected.col ".")
-  (set selected nil))
+                         game.selected.piece))
+  (set-piece game.selected.row game.selected.col ".")
+  (set game.move-counter (+ game.move-counter 1))
+  (set game.selected nil))
 
 ;;; Drawing
 
@@ -217,12 +228,12 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
     (love.graphics.rectangle "fill" (+ x offset-x) (+ y offset-y) tile-size tile-size)))
 
 (fn draw-board []
-  (for [row 0 (- gamestate.rows 1)]
-    (for [col 0 (- gamestate.cols 1)]
+  (for [row 0 (- game.level.rows 1)]
+    (for [col 0 (- game.level.cols 1)]
       (draw-square row col))))
 
 (fn draw-pieces []
-  (each [rowi row (ipairs gamestate.board)]
+  (each [rowi row (ipairs game.level.board)]
     (each [coli maybe-piece (ipairs row)]
       (let [rr (- rowi 1)
             cc (- coli 1)]
@@ -241,46 +252,72 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
           "k" (draw-img bking-img rr cc)
           "K" (draw-img wking-img rr cc))))))
 
+(fn draw-play-state []
+  (love.graphics.setFont block-font)
+  (set offset-x
+    (- (/ (love.graphics.getWidth) 2)
+       (* (/ game.level.cols 2) tile-size)))
+  (set offset-y
+    (- (/ (love.graphics.getHeight) 2)
+       (* (/ game.level.rows 2) tile-size)))
+
+  (draw-board)
+  (when game.selected
+    (draw-highlight game.selected.row game.selected.col)
+    (each [_ move (ipairs game.available-moves)]
+      (draw-highlight (unpack move))))
+  (love.graphics.setColor 1 1 1)
+  (love.graphics.print (.. "Moves: " game.move-counter) 10 10)
+  (draw-pieces))
+
+(fn draw-game-over-state []
+  (love.graphics.setColor 1 1 1)
+  (love.graphics.print "Puzzle solved!" 10 10)
+  (love.graphics.print (.. "Moves: " game.move-counter) 10 50)
+  (love.graphics.print (.. "Par: " game.level.par) 10 90)
+  (love.graphics.print "Press Enter to continue" 10 130))
+
 ;;; Love handlers
 
 (fn love.load []
+  (print game.current-state)
   (love.window.setTitle "monster chess")
-  (set gamestate (parse-mcn level-1)))
+  (load-level level-1))
 
 (fn love.draw []
-  (set offset-x
-    (- (/ (love.graphics.getWidth) 2)
-       (* (/ (. gamestate :cols) 2) tile-size)))
-  (set offset-y
-    (- (/ (love.graphics.getHeight) 2)
-       (* (/ (. gamestate :rows) 2) tile-size)))
-
-  (draw-board)
-  (when selected
-    (draw-highlight selected.row selected.col)
-    (each [_ move (ipairs available-moves)]
-      (draw-highlight (unpack move))))
-  (draw-pieces))
+  (case game.current-state
+    :play (draw-play-state)
+    :game-over (draw-game-over-state)))
 
 (fn love.update [dt])
 
+(fn love.keypressed [key scancode isrepeat]
+  (case game.current-state
+    :game-over (do
+                 (when (= key "return")
+                   (print "go to next level")))))
+
 (fn love.mousepressed [x y button]
+  ;; Kind of a shortcut/hack to avoid checking states here.
+  (unless (= game.current-state :play)
+          (lua "return"))
+
   (when (= button 1)
     (let [[row col] (pixels-to-coords x y)]
       (when (within-bounds? row col)
         (let [maybe-piece (find-piece row col)]
-          (if selected
+          (if game.selected
               (if (valid-move? row col)
                   (do
                     (move-selected row col)
                     (when (game-over?)
-                      (print "you won!")))
-                  (set selected nil)
-                  (set available-moves []))
+                      (set game.current-state :game-over)))
+                  (set game.selected nil)
+                  (set game.available-moves []))
               (if (and maybe-piece (movable? maybe-piece))
                   (do
-                    (set selected { :row row :col col :piece maybe-piece })
-                    (set available-moves
+                    (set game.selected { :row row :col col :piece maybe-piece })
+                    (set game.available-moves
                          (movable-squares maybe-piece row col)))
-                  (set selected nil)
-                  (set available-moves []))))))))
+                  (set game.selected nil)
+                  (set game.available-moves []))))))))
