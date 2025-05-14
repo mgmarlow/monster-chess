@@ -75,14 +75,18 @@
 ;; - # columns
 ;; - # rows
 ;; - FEN-style board state
+;;   - "x" is a impassable wall
+;;   - lowercase letters are black pieces
+;;   - uppercase letters are white pieces
 ;; - Par score
 ;;
 ;; Example:
 ;; "5 5 1q3/p4/5/5/3B1 2"
 
-(var level-1 "5 5 1q3/p4/5/5/3B1 2")
+;; (var level-1 "5 5 1q3/p4/5/5/3B1 2")
 ;; TODO:
-(var levels ["5 5 1q3/p4/5/5/3B1 2"])
+(var levels ["5 5 1q3/p4/5/5/3B1 2"
+             "4 4 bxr1/2xn/1N2/4 5"])
 
 (fn parse-mcn [mcn]
   "Expand MCN string into a table of game state."
@@ -112,8 +116,8 @@
             :level-counter 1
             :level nil })
 
-(fn load-level [mcn]
-  (set game.level (parse-mcn mcn))
+(fn load-level [n]
+  (set game.level (parse-mcn (. levels n)))
   (set game.selected nil)
   (set game.available-moves [])
   (set game.num-moves 0)
@@ -145,7 +149,7 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
   (string.match piecestr "[A-Z]"))
 
 (fn enemy? [piecestr]
-  (string.match piecestr "[a-z]"))
+  (and (not= piecestr "x") (string.match piecestr "[a-z]")))
 
 (fn find-piece [row col]
   "Check ROW, COL in game.level. If a piece is found, return the piece.
@@ -227,6 +231,12 @@ Otherwise, return false."
     (love.graphics.setColor (unpack (if light colors.light colors.dark)))
     (love.graphics.rectangle "fill" (+ x offset-x) (+ y offset-y) tile-size tile-size)))
 
+(fn draw-wall [row col]
+  (let [x (* col tile-size)
+        y (* row tile-size)]
+    (love.graphics.setColor 0 0 0)
+    (love.graphics.rectangle "fill" (+ x offset-x) (+ y offset-y) tile-size tile-size)))
+
 (fn draw-board []
   (for [row 0 (- game.level.rows 1)]
     (for [col 0 (- game.level.cols 1)]
@@ -239,6 +249,7 @@ Otherwise, return false."
             cc (- coli 1)]
         (case maybe-piece
           "." nil ;; empty square
+          "x" (draw-wall rr cc)
           "p" (draw-img bpawn-img rr cc)
           "P" (draw-img wpawn-img rr cc)
           "n" (draw-img bknight-img rr cc)
@@ -282,7 +293,7 @@ Otherwise, return false."
 (fn love.load []
   (print game.current-state)
   (love.window.setTitle "monster chess")
-  (load-level level-1))
+  (load-level 2))
 
 (fn love.draw []
   (case game.current-state
@@ -295,7 +306,11 @@ Otherwise, return false."
   (case game.current-state
     :game-over (do
                  (when (= key "return")
-                   (print "go to next level")))))
+                   ;; TODO:
+                   (print "go to next level")))
+    :play (do
+            (when (= key "r")
+              (print "reset level")))))
 
 (fn love.mousepressed [x y button]
   ;; Kind of a shortcut/hack to avoid checking states here.
