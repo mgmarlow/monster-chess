@@ -36,8 +36,8 @@
   (accumulate [found nil _ item (ipairs arr)]
     (if (or found (= item value)) true found)))
 
-(fn find [arr callback]
-  "Returns true if ARR includes VALUE."
+(fn includes-cb? [arr callback]
+  "Returns true if ARR has an element whose CALLBACK returns true."
   (accumulate [found nil _ item (ipairs arr)]
     (if (or found (callback item)) true found)))
 
@@ -182,12 +182,12 @@ Otherwise, return false."
     squares))
 
 (fn valid-move? [row col]
-  (find game.available-moves
-        (lambda [tuple]
-          (let [[vr vc] tuple]
-            (and (= vr row) (= vc col))))))
+  (includes-cb? game.available-moves
+                (lambda [tuple]
+                  (let [[vr vc] tuple]
+                    (and (= vr row) (= vc col))))))
 
-(fn game-over? []
+(fn level-over? []
   (let [enemies (accumulate [rst [] _ row (ipairs game.level.board)]
                   (do
                     (each [_ p (ipairs row)]
@@ -208,14 +208,6 @@ Otherwise, return false."
   (set-piece game.selected.row game.selected.col ".")
   (set game.move-counter (+ game.move-counter 1))
   (set game.selected nil))
-
-;; TODO: probably shouldn't loop around, but instead swap to an actual
-;; game over screen.
-(fn advance-level []
-  (load-level
-   (if (= (length levels) game.level-counter)
-       1
-       (+ game.level-counter 1))))
 
 ;;; Drawing
 
@@ -290,12 +282,17 @@ Otherwise, return false."
   (love.graphics.print (.. "Moves: " game.move-counter) 20 50)
   (draw-pieces))
 
-(fn draw-game-over-state []
+(fn draw-level-over-state []
   (love.graphics.setColor 1 1 1)
   (love.graphics.print "Puzzle solved!" 20 10)
   (love.graphics.print (.. "Moves: " game.move-counter) 20 50)
   (love.graphics.print (.. "Par: " game.level.par) 20 90)
   (love.graphics.print "Press Enter to continue" 20 130))
+
+(fn draw-game-over-state []
+  (love.graphics.setColor 1 1 1)
+  (love.graphics.print "All puzzles solved!" 20 10)
+  (love.graphics.print "Thanks for playing!" 20 50))
 
 ;;; Love handlers
 
@@ -307,21 +304,27 @@ Otherwise, return false."
 (fn love.draw []
   (case game.current-state
     :play (draw-play-state)
+    :level-over (draw-level-over-state)
     :game-over (draw-game-over-state)))
 
 (fn love.update [dt])
 
 (fn love.keypressed [key scancode isrepeat]
   (case game.current-state
-    :game-over (do
+    :level-over (do
                  (when (= key "return")
-                   (advance-level)))
+                   (if (= (length levels) game.level-counter)
+                       (set game.current-state :game-over)
+                       (load-level (+ game.level-counter 1)))))
     :play (do
             (when (= key "r")
               (load-level game.level-counter))
             ;; TODO: debug only
             (when (= key "tab")
-              (advance-level)))))
+              (load-level
+               (if (= (length levels) game.level-counter)
+                   1
+                   (+ game.level-counter 1)))))))
 
 (fn love.mousepressed [x y button]
   ;; Kind of a shortcut/hack to avoid checking states here.
@@ -336,8 +339,8 @@ Otherwise, return false."
               (if (valid-move? row col)
                   (do
                     (move-selected row col)
-                    (when (game-over?)
-                      (set game.current-state :game-over)))
+                    (when (level-over?)
+                      (set game.current-state :level-over)))
                   (set game.selected nil)
                   (set game.available-moves []))
               (if (and maybe-piece (movable? maybe-piece))
