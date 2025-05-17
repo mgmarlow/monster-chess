@@ -88,12 +88,20 @@
 ;; Example:
 ;; "5 5 1q3/p4/5/5/3B1 2"
 
-(var levels ["4 4 4/1n2/4/1Rb1 2"
-             "4 4 2k1/1n2/4/pRb1 8"
-             ;; Introduction: walls
-             "4 4 bxr1/2xn/1N2/4 5"
-             "4 4 2xk/n1xx/4/R1n1 7"
-             "4 4 1x1q/1nx1/3x/rKb1 6"])
+(var levels
+     [;; Basics
+      "4 4 4/1n2/4/1Rb1 2"
+      "4 4 4/1n2/b3/pKb1 5"
+      "4 4 2k1/1n2/4/pRb1 8"
+      "4 4 4/2n1/1Qn1/2n1 6"
+      ;; Introduction: walls
+      "4 4 q3/xxxx/r3/1P1n 5"
+      "4 4 1x1q/1nx1/3x/rKb1 6"
+      "4 4 2xk/n1xx/4/R1n1 7"
+      "4 4 4/q1nb/1Pxp/1p2 10"
+      ;; Bigger levels
+      ;; "5 5 1x1x1/1x1x1/1x1x1/1xNx1/1x1x1 1"
+      ])
 
 (fn parse-mcn [mcn]
   "Expand MCN string into a table of game state."
@@ -168,6 +176,8 @@ Otherwise, return false."
 (fn within-bounds? [row col]
   (and (> row 0) (> col 0) (<= col game.level.cols) (<= row game.level.rows)))
 
+;; Pawn stuff is precomputed but should really just be another
+;; condition within the normal movable-squares fn.
 (fn pawn-attackables [row col]
   "List of attack deltas for a pawn at ROW, COL. Empty if the pawn has no
 attackable squares."
@@ -179,9 +189,18 @@ attackable squares."
                (within-bounds? atk-row atk-col)
                (find-piece atk-row atk-col))))))
 
+(fn pawn-movables [row col]
+  "List of move deltas for pawn at ROW, COL."
+  (filter (moves "P")
+          (lambda [delta]
+            (let [[drow dcol] delta
+                  [atk-row atk-col] [(+ drow row) (+ dcol col)]]
+              (and (within-bounds? atk-row atk-col)
+                   (not (find-piece atk-row atk-col)))))))
+
 (fn movable-squares [piecestr row col]
   (let [deltas (if (= piecestr "P")
-                   (concat (moves piecestr) (pawn-attackables row col))
+                   (concat (pawn-movables row col) (pawn-attackables row col))
                    (moves piecestr))
         squares []]
     (each [_ delta (ipairs deltas)]
@@ -299,7 +318,8 @@ attackable squares."
       (draw-highlight (unpack move))))
   (love.graphics.setColor 1 1 1)
   (love.graphics.print (.. "Level: " game.level-counter) 20 10)
-  (love.graphics.print (.. "Moves: " game.move-counter) 20 50)
+  (love.graphics.print (.. "Par: " game.level.par) 20 50)
+  (love.graphics.print (.. "Moves: " game.move-counter) 20 90)
   (draw-pieces))
 
 (fn draw-level-over-state []
