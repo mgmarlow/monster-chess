@@ -100,7 +100,7 @@
       "4 4 2xk/n1xx/4/R1n1 7"
       "4 4 4/q1nb/1Pxp/1p2 10"
       ;; Bigger levels
-      ;; "5 5 1x1x1/1x1x1/1x1x1/1xNx1/1x1x1 1"
+      "5 5 1x1x1/1xrx1/nx1xn/1xNx1/1xnx1 5"
       ])
 
 (fn parse-mcn [mcn]
