@@ -3,6 +3,7 @@
                 :highlight [0.42 0.62 0.35 0.75] })
 
 (local block-font (love.graphics.newFont "fonts/Kenney Blocks.ttf" 24))
+(local wall-img (love.graphics.newImage "img/wall.png"))
 (local wpawn-img (love.graphics.newImage "img/wP.png"))
 (local bpawn-img (love.graphics.newImage "img/bP.png"))
 (local wknight-img (love.graphics.newImage "img/wN.png"))
@@ -101,6 +102,9 @@
       "4 4 4/q1nb/1Pxp/1p2 10"
       ;; Bigger levels
       "5 5 1x1x1/1xrx1/nx1xn/1xNx1/1xnx1 5"
+      "5 5 3x1/3xr/n1rx1/1P1p1/3p1 11"
+      "5 5 3nx/b2x1/2x2/1x1b1/x2qP 12"
+      "5 5 rb1x1/Px1x1/qx1xr/1xnx1/1x1P1 9"
       ])
 
 (fn parse-mcn [mcn]
@@ -273,8 +277,8 @@ attackable squares."
 (fn draw-wall [row col]
   (let [x (* col tile-size)
         y (* row tile-size)]
-    (love.graphics.setColor 0 0 0)
-    (love.graphics.rectangle "fill" (+ x offset-x) (+ y offset-y) tile-size tile-size)))
+    (love.graphics.setColor 1 1 1)
+    (love.graphics.draw wall-img (+ x offset-x) (+ y offset-y))))
 
 (fn draw-board []
   (for [row 0 (- game.level.rows 1)]

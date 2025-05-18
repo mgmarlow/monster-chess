@@ -10,4 +10,12 @@ pieces move, you're ready to play Monster Chess.
 
 ## Kudos
 
-Pieces are the [Staunty](https://github.com/lichess-org/lila/issues/5647) set from Lichess.
+- Wall tile image and font ([Kenney
+  Blocks](https://kenney.nl/assets/kenney-fonts) are from
+  [Kenney.nl](https://kenney.nl/starter-kits))
+
+- Pieces are the
+  [Staunty](https://github.com/lichess-org/lila/issues/5647) set from
+  Lichess.
+
+- Board tile colors are the Lichess defaults.
