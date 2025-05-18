@@ -6,6 +6,8 @@ run:
 
 clean:
 	rm -rf dist
+	rm game.zip
+	rm game.love
 
 build: clean
 	fennel --compile main.fnl > main.lua

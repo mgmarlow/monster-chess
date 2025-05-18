@@ -20,6 +20,7 @@
 (var offset-x 0)
 (var offset-y 0)
 (var tile-size 64)
+(var debug false)
 
 ;;; General utilities
 
@@ -102,8 +103,8 @@
       "4 4 4/q1nb/1Pxp/1p2 10"
       ;; Bigger levels
       "5 5 1x1x1/1xrx1/nx1xn/1xNx1/1xnx1 5"
-      "5 5 3x1/3xr/n1rx1/1P1p1/3p1 11"
-      "5 5 3nx/b2x1/2x2/1x1b1/x2qP 12"
+      "5 5 3x1/3xr/n1rx1/1P1p1/3p1 9"
+      "5 5 3nx/b2x1/2x2/1x1b1/x2qP 10"
       "5 5 rb1x1/Px1x1/qx1xr/1xnx1/1x1P1 9"
       ])
 
@@ -341,7 +342,7 @@ attackable squares."
 ;;; Love handlers
 
 (fn love.load []
-  (print game.current-state)
+  (love.graphics.setDefaultFilter "nearest")
   (love.window.setTitle "monster chess")
   (load-level 1))
 
@@ -363,8 +364,7 @@ attackable squares."
     :play (do
             (when (= key "r")
               (load-level game.level-counter))
-            ;; TODO: debug only
-            (when (= key "tab")
+            (when (and debug (= key "tab"))
               (load-level
                (if (= (length levels) game.level-counter)
                    1
