@@ -33,15 +33,10 @@
      (when ,name
        (do ,(unpack body)))))
 
-(fn includes? [arr value]
-  "Returns true if ARR includes VALUE."
-  (accumulate [found nil _ item (ipairs arr)]
-    (if (or found (= item value)) true found)))
-
-(fn includes-cb? [arr callback]
+(fn includes? [arr cb]
   "Returns true if ARR has an element whose CALLBACK returns true."
   (accumulate [found nil _ item (ipairs arr)]
-    (if (or found (callback item)) true found)))
+    (if (or found (cb item)) true found)))
 
 (fn find-index [arr value]
   "Returns the index of VALUE in ARR or nil if not found."
@@ -163,7 +158,7 @@ rays? to determine whether a piece can move along an entire rank/file/diagonal."
 
 (fn rays? [piecestr]
   "Whether the movement of PIECE continues until bounds are reached."
-  (includes? ["B" "R" "Q"] piecestr))
+  (includes? ["B" "R" "Q"] (lambda [o] (= o piecestr))))
 
 (fn movable? [piecestr]
   "Only white pieces are player-controlled."
@@ -181,32 +176,23 @@ Otherwise, return false."
 (fn within-bounds? [row col]
   (and (> row 0) (> col 0) (<= col game.level.cols) (<= row game.level.rows)))
 
-;; Pawn stuff is precomputed but should really just be another
-;; condition within the normal movable-squares fn.
-(fn pawn-attackables [row col]
-  "List of attack deltas for a pawn at ROW, COL. Empty if the pawn has no
-attackable squares."
-  (filter (attacks "P")
-          (lambda [delta]
-            (let [[drow dcol] delta
-                  [atk-row atk-col] [(+ drow row) (+ dcol col)]]
-              (and
-               (within-bounds? atk-row atk-col)
-               (find-piece atk-row atk-col))))))
+(fn movable-squares-pawn [row col]
+  (let [squares []]
+    ;; [-1 0]
+    (when (and (within-bounds? (- row 1) col)
+               (not (find-piece (- row 1) col)))
+      (table.insert squares [(- row 1) col]))
+    ;; [[-1 -1] [-1 1]]
+    (when (and (within-bounds? (- row 1) (- col 1))
+               (find-piece (- row 1) (- col 1)))
+      (table.insert squares [(- row 1) (- col 1)]))
+    (when (and (within-bounds? (- row 1) (+ col 1))
+               (find-piece (- row 1) (+ col 1)))
+      (table.insert squares [(- row 1) (+ col 1)]))
+    squares))
 
-(fn pawn-movables [row col]
-  "List of move deltas for pawn at ROW, COL."
-  (filter (moves "P")
-          (lambda [delta]
-            (let [[drow dcol] delta
-                  [atk-row atk-col] [(+ drow row) (+ dcol col)]]
-              (and (within-bounds? atk-row atk-col)
-                   (not (find-piece atk-row atk-col)))))))
-
-(fn movable-squares [piecestr row col]
-  (let [deltas (if (= piecestr "P")
-                   (concat (pawn-movables row col) (pawn-attackables row col))
-                   (moves piecestr))
+(fn movable-squares-piece [piecestr row col]
+  (let [deltas (moves piecestr)
         squares []]
     (each [_ delta (ipairs deltas)]
       (let [[drow dcol] delta]
@@ -225,11 +211,16 @@ attackable squares."
             (set next-col (+ next-col dcol))))))
     squares))
 
+(fn movable-squares [piecestr row col]
+  (if (= piecestr "P")
+      (movable-squares-pawn row col)
+      (movable-squares-piece piecestr row col)))
+
 (fn valid-move? [row col]
-  (includes-cb? game.available-moves
-                (lambda [tuple]
-                  (let [[vr vc] tuple]
-                    (and (= vr row) (= vc col))))))
+  (includes? game.available-moves
+             (lambda [tuple]
+               (let [[vr vc] tuple]
+                 (and (= vr row) (= vc col))))))
 
 (fn level-over? []
   (let [enemies (accumulate [rst [] _ row (ipairs game.level.board)]
