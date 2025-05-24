@@ -103,14 +103,9 @@
       "5 5 rb1x1/Px1x1/qx1xr/1xnx1/1x1P1 9"
       ])
 
-(fn parse-mcn [mcn]
-  "Expand MCN string into a table of game state."
-  (let [parts (icollect [s (string.gmatch mcn "[^ ]+")] s)
-        cols (tonumber (. parts 1))
-        rows (tonumber (. parts 2))
-        boardstr (. parts 3)
-        board []
-        par (tonumber (. parts 4))]
+(fn parse-mcn-board [boardstr]
+  "Parse MCN BOARDSTR into a 2D array of characters."
+  (let [board []]
     (each [row (string.gmatch boardstr "[^/]+")]
       (let [pieces []]
         (each [char (string.gmatch row ".")]
@@ -119,17 +114,47 @@
                 (table.insert pieces "."))
               (table.insert pieces char)))
         (table.insert board pieces)))
+    board))
+
+(fn parse-mcn [mcn]
+  "Expand MCN string into a table of game state."
+  (let [parts (icollect [s (string.gmatch mcn "[^ ]+")] s)
+        cols (tonumber (. parts 1))
+        rows (tonumber (. parts 2))
+        boardstr (. parts 3)
+        par (tonumber (. parts 4))]
     { :cols cols
       :rows rows
-      :board board
+      :board (parse-mcn-board boardstr)
       :par par }))
 
 (var game { :selected nil
             :available-moves []
+            :history []
             :move-counter 0
             :current-state :play
             :level-counter 1
             :level nil })
+
+(fn generate-mcn-board [board]
+  "Read BOARD into an MCN string."
+  (var result "")
+  (each [ri row (ipairs board)]
+    (var counter 0)
+    (each [_ char (ipairs row)]
+      (if (= char ".")
+          (set counter (+ counter 1))
+          (do
+            (when (> counter 0)
+              (set result (.. result counter))
+              (set counter 0))
+            (set result (.. result char)))))
+    (when (> counter 0)
+      (set result (.. result counter))
+      (set counter 0))
+    (unless (= ri (length board))
+            (set result (.. result "/"))))
+  result)
 
 (fn load-level [n]
   (set game.level (parse-mcn (. levels n)))
@@ -237,12 +262,18 @@ Otherwise, return false."
   (tset game :level :board row col value))
 
 (fn move-selected [row col]
+  (table.insert game.history (generate-mcn-board game.level.board))
   (set-piece row col (or (and (find-piece row col)
                               (string.upper (find-piece row col)))
                          game.selected.piece))
   (set-piece game.selected.row game.selected.col ".")
   (set game.move-counter (+ game.move-counter 1))
   (set game.selected nil))
+
+(fn undo []
+  (when-let [last-mcn (table.remove game.history (length game.history))]
+            (set game.move-counter (- game.move-counter 1))
+            (set game.level.board (parse-mcn-board last-mcn))))
 
 ;;; Drawing
 
@@ -355,6 +386,8 @@ Otherwise, return false."
     :play (do
             (when (= key "r")
               (load-level game.level-counter))
+            (when (= key "z")
+              (undo))
             (when (and debug (= key "tab"))
               (load-level
                (if (= (length levels) game.level-counter)
