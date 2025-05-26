@@ -3,12 +3,12 @@ run:
 
 clean:
 	rm -rf dist
-	rm game.zip
-	rm game.love
+	rm -f game.zip
+	rm -f game.love
 
 build: clean
 	mkdir dist
-	cp main.lua main.fnl dist/
+	cp main.lua *.fnl dist/
 	cp -R lib/ dist/lib/
 	cp -R img/ dist/img/
 	cp -R fonts/ dist/fonts/
