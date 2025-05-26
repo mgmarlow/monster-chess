@@ -3,6 +3,8 @@
                 :highlight [0.42 0.62 0.35 0.75] })
 
 (local block-font (love.graphics.newFont "fonts/Kenney Blocks.ttf" 24))
+;; TODO:
+;; (local editor-font (love.graphics.newFont "Arial" 24))
 (local wall-img (love.graphics.newImage "img/wall.png"))
 (local wpawn-img (love.graphics.newImage "img/wP.png"))
 (local bpawn-img (love.graphics.newImage "img/bP.png"))
@@ -20,7 +22,7 @@
 (var offset-x 0)
 (var offset-y 0)
 (var tile-size 64)
-(var debug false)
+(var debug true)
 
 ;;; General utilities
 
@@ -135,6 +137,23 @@
             :current-state :play
             :level-counter 1
             :level nil })
+
+(fn fill-empty-board [rows cols]
+  "Generate an empty board with n ROWS and m COLS."
+  (let [board []]
+    (for [_ 1 rows]
+      (let [row []]
+        (for [_ 1 cols]
+          (table.insert row "."))
+        (table.insert board row)))
+    board))
+
+;; TODO: editable rows/cols
+(var editor { :rows 4
+              :cols 4
+              :placement nil
+              :board (fill-empty-board 4 4)
+              :mcn "4/4/4/4" })
 
 (fn generate-mcn-board [board]
   "Read BOARD into an MCN string."
@@ -303,13 +322,32 @@ Otherwise, return false."
     (love.graphics.setColor 1 1 1)
     (love.graphics.draw wall-img (+ x offset-x) (+ y offset-y))))
 
-(fn draw-board []
-  (for [row 0 (- game.level.rows 1)]
-    (for [col 0 (- game.level.cols 1)]
+(fn draw-board [rows cols]
+  (for [row 0 (- rows 1)]
+    (for [col 0 (- cols 1)]
       (draw-square row col))))
 
-(fn draw-pieces []
-  (each [rowi row (ipairs game.level.board)]
+;; TODO: clean this up so it can be reused betwen editor and play states
+(fn draw-piece [piecestr x y]
+  (love.graphics.setColor 1 1 1)
+  (case piecestr
+    "." nil ;; empty square
+    "x" (love.graphics.draw wall-img x y)
+    "p" (love.graphics.draw bpawn-img x y)
+    "P" (love.graphics.draw wpawn-img x y)
+    "n" (love.graphics.draw bknight-img x y)
+    "N" (love.graphics.draw wknight-img x y)
+    "b" (love.graphics.draw bbishop-img x y)
+    "B" (love.graphics.draw wbishop-img x y)
+    "r" (love.graphics.draw brook-img x y)
+    "R" (love.graphics.draw wrook-img x y)
+    "q" (love.graphics.draw bqueen-img x y)
+    "Q" (love.graphics.draw wqueen-img x y)
+    "k" (love.graphics.draw bking-img x y)
+    "K" (love.graphics.draw wking-img x y)))
+
+(fn draw-pieces [board]
+  (each [rowi row (ipairs board)]
     (each [coli maybe-piece (ipairs row)]
       (let [rr (- rowi 1)
             cc (- coli 1)]
@@ -338,7 +376,7 @@ Otherwise, return false."
     (- (/ (love.graphics.getHeight) 2)
        (* (/ game.level.rows 2) tile-size)))
 
-  (draw-board)
+  (draw-board game.level.rows game.level.cols)
   (when game.selected
     (draw-highlight game.selected.row game.selected.col)
     (each [_ move (ipairs game.available-moves)]
@@ -347,7 +385,7 @@ Otherwise, return false."
   (love.graphics.print (.. "Level: " game.level-counter) 20 10)
   (love.graphics.print (.. "Par: " game.level.par) 20 50)
   (love.graphics.print (.. "Moves: " game.move-counter) 20 90)
-  (draw-pieces))
+  (draw-pieces game.level.board))
 
 (fn draw-level-over-state []
   (love.graphics.setColor 1 1 1)
@@ -361,44 +399,59 @@ Otherwise, return false."
   (love.graphics.print "All puzzles solved!" 20 10)
   (love.graphics.print "Thanks for playing!" 20 50))
 
-;;; Love handlers
+(fn draw-editor []
+  (love.graphics.setColor 1 1 1)
+  (love.graphics.print "level editor" 20 10)
+  ;; TODO: need a readable font for lowercase pieces.
+  ;; (love.graphics.setFont editor-font)
+  (love.graphics.print editor.mcn 20 (- (love.graphics.getHeight) 50))
+  (love.graphics.setFont block-font)
+  (draw-board editor.rows editor.cols)
+  (draw-pieces editor.board)
+  (when editor.placement
+    (let [(x y) (love.mouse.getPosition)]
+      (draw-piece editor.placement x y))))
 
-(fn love.load []
-  (love.graphics.setDefaultFilter "nearest")
-  (love.window.setTitle "monster chess")
-  (load-level 1))
+;;; Updating
 
-(fn love.draw []
-  (case game.current-state
-    :play (draw-play-state)
-    :level-over (draw-level-over-state)
-    :game-over (draw-game-over-state)))
+(fn update-editor [dt])
 
-(fn love.update [dt])
+;;; Handlers
 
-(fn love.keypressed [key scancode isrepeat]
-  (case game.current-state
-    :level-over (do
-                 (when (= key "return")
-                   (if (= (length levels) game.level-counter)
-                       (set game.current-state :game-over)
-                       (load-level (+ game.level-counter 1)))))
-    :play (do
-            (when (= key "r")
-              (load-level game.level-counter))
-            (when (= key "z")
-              (undo))
-            (when (and debug (= key "tab"))
-              (load-level
-               (if (= (length levels) game.level-counter)
-                   1
-                   (+ game.level-counter 1)))))))
+(fn handle-level-over-keypressed [key scancode isrepeat]
+  (when (= key "return")
+    (if (= (length levels) game.level-counter)
+        (set game.current-state :game-over)
+        (load-level (+ game.level-counter 1)))))
 
-(fn love.mousepressed [x y button]
-  ;; Kind of a shortcut/hack to avoid checking states here.
-  (unless (= game.current-state :play)
-          (lua "return"))
+(fn handle-play-keypressed [key scancode isrepeat]
+  (when (= key "r")
+    (load-level game.level-counter))
+  (when (= key "z")
+    (undo))
+  (when (and debug (= key "`"))
+    (set game.current-state :editor))
+  (when (and debug (= key "tab"))
+    (load-level
+     (if (= (length levels) game.level-counter)
+         1
+         (+ game.level-counter 1)))))
 
+(local piecestrs [ "." "x" "p" "P" "n" "N" "b" "B"
+                   "r" "R" "q" "Q" "k" "K" ])
+
+;; Note: keypressed doesn't handle capital letters.
+(fn handle-editor-textinput [text]
+  (when (includes? piecestrs (lambda [k] (= k text)))
+    (set editor.placement text)))
+
+(fn handle-editor-keypressed [key scancode isrepeat]
+  (when (= key "`")
+    (load-level game.level-counter))
+  (when (= key "escape")
+    (set editor.placement nil)))
+
+(fn handle-play-mousepressed [x y button]
   (when (= button 1)
     (let [[row col] (pixels-to-coords x y)]
       (when (within-bounds? row col)
@@ -418,3 +471,39 @@ Otherwise, return false."
                          (movable-squares maybe-piece row col)))
                   (set game.selected nil)
                   (set game.available-moves []))))))))
+
+(fn handle-editor-mousepressed [x y button]
+  (set editor.mcn (generate-mcn-board editor.board)))
+
+;;; Love Entrypoints
+
+(fn love.load []
+  (love.graphics.setDefaultFilter "nearest")
+  (love.window.setTitle "monster chess")
+  (load-level 1))
+
+(fn love.draw []
+  (case game.current-state
+    :play (draw-play-state)
+    :level-over (draw-level-over-state)
+    :game-over (draw-game-over-state)
+    :editor (draw-editor)))
+
+(fn love.update [dt]
+  (case game.current-state
+    :editor (update-editor dt)))
+
+(fn love.textinput [text]
+  (case game.current-state
+    :editor (handle-editor-textinput text)))
+
+(fn love.keypressed [key scancode isrepeat]
+  (case game.current-state
+    :level-over (handle-level-over-keypressed key scancode isrepeat)
+    :play (handle-play-keypressed key scancode isrepeat)
+    :editor (handle-editor-keypressed key scancode isrepeat)))
+
+(fn love.mousepressed [x y button]
+  (case game.current-state
+    :play (handle-play-mousepressed x y button)
+    :editor (handle-editor-mousepressed x y button)))
