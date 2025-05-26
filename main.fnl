@@ -301,6 +301,13 @@ Otherwise, return false."
     (love.graphics.setColor (unpack colors.highlight))
     (love.graphics.rectangle "fill" x y tile-size tile-size)))
 
+(fn draw-target [row col]
+  (let [[x y] (coords-to-pixels row col)]
+    (love.graphics.setColor (unpack colors.highlight))
+    (love.graphics.circle "fill"
+                          (+ x (/ tile-size 2)) (+ y (/ tile-size 2))
+                          12)))
+
 (fn draw-img [img row col]
   "Translates row/col to pixel coordinates and account for middle-of-screen offset."
   ;; 64-50 = 14, 14/2 = 7, might parameterize later
@@ -378,14 +385,15 @@ Otherwise, return false."
 
   (draw-board game.level.rows game.level.cols)
   (when game.selected
-    (draw-highlight game.selected.row game.selected.col)
+    (draw-highlight game.selected.row game.selected.col))
+  (draw-pieces game.level.board)
+  (when game.selected
     (each [_ move (ipairs game.available-moves)]
-      (draw-highlight (unpack move))))
+      (draw-target (unpack move))))
   (love.graphics.setColor 1 1 1)
   (love.graphics.print (.. "Level: " game.level-counter) 20 10)
   (love.graphics.print (.. "Par: " game.level.par) 20 50)
-  (love.graphics.print (.. "Moves: " game.move-counter) 20 90)
-  (draw-pieces game.level.board))
+  (love.graphics.print (.. "Moves: " game.move-counter) 20 90))
 
 (fn draw-level-over-state []
   (love.graphics.setColor 1 1 1)
@@ -403,7 +411,6 @@ Otherwise, return false."
   (love.graphics.setColor 1 1 1)
   (love.graphics.print "level editor" 20 10)
   ;; TODO: need a readable font for lowercase pieces.
-  ;; (love.graphics.setFont editor-font)
   (love.graphics.print editor.mcn 20 (- (love.graphics.getHeight) 50))
   (love.graphics.setFont block-font)
   (draw-board editor.rows editor.cols)
