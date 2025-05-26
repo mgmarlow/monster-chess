@@ -473,7 +473,11 @@ Otherwise, return false."
                   (set game.available-moves []))))))))
 
 (fn handle-editor-mousepressed [x y button]
-  (set editor.mcn (generate-mcn-board editor.board)))
+  (let [[row col] (pixels-to-coords x y)]
+    (when (and editor.placement (within-bounds? row col))
+      (tset editor :board row col editor.placement)
+      (set editor.mcn (generate-mcn-board editor.board))
+      (set editor.placement nil))))
 
 ;;; Love Entrypoints
 
